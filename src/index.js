@@ -1,10 +1,7 @@
-import axios from 'axios';
 import { Notify } from 'notiflix/build/notiflix-notify-aio';
 import SlimSelect from 'slim-select';
 import 'slim-select/dist/slimselect.css';
-
-const API_KEY = 'live_3MtvjaxfCd85ScC2ikNowuREIjhAAHg1V9iWGPZtSsNE6U8s3e762ej5c1tvqW42';
-axios.defaults.headers.common['x-api-key'] = API_KEY;
+import { fetchBreeds, fetchCatByBreed } from './js/cat-api';
 
 const breedSelect = document.querySelector('.breed-select');
 
@@ -43,10 +40,15 @@ const select = new SlimSelect({
   events: {
     afterChange: newVal => {
       if (newVal[0].value.length > 0) {
+        requestStart();
         removeChildren(catInfo);
         fetchCatByBreed(newVal[0].value)
           .then(posts => renderPosts(posts))
-          .catch(error => console.log(error));
+          .catch(error => {
+            Notify.failure(`Request rejected: ${error.status}`);
+            requestWrong();
+            requestFinish();
+          });
       } else {
         catInfo.classList.add('visually-hidden');
       }
@@ -54,27 +56,12 @@ const select = new SlimSelect({
   },
 });
 
-fetchBreeds()
-  .then(posts => renderFetchBreeds(posts))
-  .catch(error => console.log(error));
-
-function fetchBreeds() {
+(() => {
   requestStart();
-  return fetch(`https://api.thecatapi.com/v1/breeds?${axios}`)
-    .then(response => {
-      requestFinish();
-      if (!response.ok) {
-        requestWrong();
-        Notify.failure(`Request rejected: ${response.status}`);
-        // throw new Error(response.status);
-      }
-      return response.json();
-    })
-    .catch(error => {
-      requestWrong();
-      Notify.failure(`Request rejected: ${error.status}`);
-    });
-}
+  fetchBreeds()
+    .then(posts => renderFetchBreeds(posts))
+    .catch(error => errorFetchBreeds(error));
+})();
 
 function renderFetchBreeds(posts) {
   let arrSelected = [{ text: '', placeholder: true }];
@@ -82,30 +69,14 @@ function renderFetchBreeds(posts) {
     arrSelected.push({ text: element.name, value: element.id });
   });
   select.setData(arrSelected);
-}
-
-function fetchCatByBreed(breedId) {
-  requestStart();
-  return fetch(`https://api.thecatapi.com/v1/images/search?breed_ids=${breedId}&api_key=${API_KEY}`)
-    .then(response => {
-      requestFinish();
-      if (!response.ok) {
-        requestWrong();
-        Notify.failure(`Request rejected: ${response.status}`);
-        // throw new Error(response.status);
-      }
-      return response.json();
-    })
-    .catch(error => {
-      requestWrong();
-      Notify.failure(`Request rejected: ${error.status}`);
-    });
+  requestFinish();
 }
 
 function renderPosts(posts) {
-  const markup = posts
-    .map(posts => {
-      return `<div class="cat-item-card">
+  if (posts.length) {
+    const markup = posts
+      .map(posts => {
+        return `<div class="cat-item-card">
                 <img class="cat-img" src="${posts.url}" />
               </div>
               <div class="cat-item-card">
@@ -113,10 +84,15 @@ function renderPosts(posts) {
                 <p>${posts.breeds[0].temperament}</p>
                 <p>${posts.breeds[0].description}</p>
               </div>`;
-    })
-    .join('');
+      })
+      .join('');
 
-  catInfo.insertAdjacentHTML('afterbegin', markup);
+    catInfo.insertAdjacentHTML('afterbegin', markup);
+  } else {
+    Notify.failure(`Request rejected: The record is empty`);
+  }
+
+  requestFinish();
 }
 
 function removeChildren(container) {
@@ -141,4 +117,9 @@ function requestWrong() {
   loader.classList.add('visually-hidden');
   breedSelect.classList.add('visually-hidden');
   catInfo.classList.add('visually-hidden');
+}
+
+function errorFetchBreeds(error) {
+  Notify.failure(`Request rejected: ${error.status}`);
+  requestWrong();
 }
